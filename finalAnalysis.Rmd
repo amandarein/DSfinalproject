@@ -1,0 +1,198 @@
+---
+title: "Final Project -- KNN Analysis"
+author: "Belen Gomez Grimaldi, Amanda Rein, Kay Mattern"
+date: "4/20/2021"
+output:
+  html_document:
+    toc: TRUE
+    theme: journal
+    toc_float: TRUE
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+install.packages("naniar")
+library(dplyr)
+library(magrittr)
+library(knitr)
+library(naniar)
+library(ggplot2)
+```
+
+# Data set 1: Reviews of coffee shops
+
+## Find out which columns have many missing values so that they can be discarded
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+twitter_data = read.csv("twitterBots.csv")
+twitter_data <- twitter_data[,-c(1,2,3,4,5,6,10,15,19)]
+twitter_data <- twitter_data[complete.cases(twitter_data), ]
+gg_miss_var(twitter_data)
+```
+
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+split <- table(twitter_data$bot)[2] / sum(table(twitter_data$bot))
+split
+# The base rate is 83.3% for identifying whether a coffee shop was high-rated or not.
+twitter_data[,5] = as.factor(twitter_data[,5])
+twitter_data[,5] = as.numeric(twitter_data[,5])
+
+twitter_data[,7] = as.factor(twitter_data[,7])
+twitter_data[,7] = as.numeric(twitter_data[,7])
+
+twitter_data[,8] = as.factor(twitter_data[,8])
+twitter_data[,8] = as.numeric(twitter_data[,8])
+
+twitter_data[,9] = as.factor(twitter_data[,9])
+twitter_data[,9] = as.numeric(twitter_data[,9])
+
+twitter_data[,10] = as.factor(twitter_data[,10])
+twitter_data[,10] = as.numeric(twitter_data[,10])
+
+twitter_data[,11] = as.factor(twitter_data[,11])
+
+
+
+twitter_data[,1] = as.numeric(twitter_data[,1])
+twitter_data[,2] = as.numeric(twitter_data[,2])
+twitter_data[,3] = as.numeric(twitter_data[,3])
+twitter_data[,4] = as.numeric(twitter_data[,4])
+twitter_data[,6] = as.numeric(twitter_data[,6])
+
+
+
+# Scale the data
+twitter_data[, -c(11)] <- lapply(twitter_data[, -c(11)],function(x) scale(x))
+# Find correlations in the data 
+stat_correlations <- cor(twitter_data[,-11])
+# View(stat_correlations)
+```
+
+## Plot k vs. accuracy to see how many neighbors to use
+
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+set.seed(1982)
+bot_data_train_rows = sample(1:nrow(twitter_data),
+                              round(0.8 * nrow(twitter_data), 0),
+                              replace = FALSE)
+# Check to make sure we have 80% of the rows
+percent_or_rows = length(bot_data_train_rows) / nrow(twitter_data)
+# Rows used in training set
+bot_data_train = twitter_data[bot_data_train_rows, ]
+# Rows not used in training set, aka the test set
+bot_data_test = twitter_data[-bot_data_train_rows, ]
+# Check the number of rows in each set.
+# nrow(coffee_data_train)
+# nrow(coffee_data_test)
+# Figure out which K to use
+# install.packages("class") 
+library(class)
+chooseK = function(k, train_set, val_set, train_class, val_class){
+  set.seed(1)
+  class_knn = knn(train = train_set,
+                  test = val_set,
+                  cl = train_class,
+                  k = k,
+                  use.all = TRUE)
+  conf_mat = table(class_knn, val_class)
+  test <- conf_mat
+  # Accuracy = (TP + TN) / (TP + TN + FP + FN)
+  accu = sum(conf_mat[row(conf_mat) == col(conf_mat)]) / sum(conf_mat)
+  cbind(k = k, accuracy = accu)
+}
+knn_diff_k_bot = sapply(seq(1, 21, by = 2),  #<- set k to be odd number from 1 to 21
+                         function(x) chooseK(x,
+                                             train_set =
+                                               bot_data_train[, -c(11)],
+                                             val_set = bot_data_test[, -c(11)],
+                                             train_class = bot_data_train[, 11],
+                                             val_class = bot_data_test[, 11]))
+knn_diff_k_bot = tibble(k = knn_diff_k_bot[1,],
+                             accuracy = knn_diff_k_bot[2,])
+ggplot(knn_diff_k_bot,
+       aes(x = k, y = accuracy)) +
+  geom_line(color = "orange", size = 1.5) +
+  geom_point(size = 3)
+```
+
+## Run KNN analysis with 11 nearest neighbors and analyze the accuracy of the model
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+# Try 7 nearest neighbors
+bot_7NN <-  knn(train = bot_data_train[, -11],
+               test = bot_data_test[, -11],
+               cl = bot_data_train[, 11],
+               k = 7,
+               use.all = TRUE,
+               prob = TRUE)
+# str(coffee_11NN)
+# View(coffee_11NN)
+kNN_res = table(bot_7NN,
+                bot_data_test$bot)
+# View(kNN_res)
+conf_matrix_initial <- kNN_res
+# conf_matrix_initial
+#install.packages("caret")
+library(caret)
+#install.packages("e1071")
+library(e1071)
+#install.packages("Rcpp")
+library(Rcpp)
+```
+
+## Evaluate model {.tabset}
+### Confusion matrix
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+conf_matrix <- confusionMatrix(as.factor(bot_7NN), as.factor(bot_data_test$bot), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
+conf_matrix 
+# conf_matrix$overall["Accuracy"]
+# conf_matrix$overall["Kappa"]
+# conf_matrix$byClass["Sensitivity"]
+# conf_matrix$byClass["Specificity"]
+conf_matrix$byClass["F1"]
+```
+
+### Log Loss
+
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+install.packages("MLmetrics")
+library(MLmetrics)
+str(as.numeric(attributes(bot_7NN)$prob))
+str(bot_data_test$bot)
+?LogLoss
+LogLoss(attributes(bot_7NN)$prob, as.numeric(bot_data_test$bot))
+# coffee_data_test$result = coffee_11NN
+# F1_Score(as.numeric(coffee_data_test$result),as.numeric(coffee_data_test$bool_HIGH))
+```
+
+### AUC
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+install.packages("ROCR")
+library(ROCR)
+pred <- prediction(as.numeric(attributes(bot_7NN)$prob), as.numeric(bot_data_test$bot))
+#View(pred)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, colorize=TRUE)
+abline(a=0, b= 1)
+perf_AUC <- performance(pred,"auc")
+perf_AUC@y.values[[1]]
+```
+
+## Miss-Classification Errors
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+adjust_thres <- function(x, y, z) {
+  #x=pred_probablities, y=threshold, z=test_outcome
+  thres <- as.factor(ifelse(x > y, 1,0))
+  confusionMatrix(thres, z, positive = "1", dnn=c("Prediction", "Actual"), mode = "everything")
+}
+coffee_refactor <- as.data.frame(coffee_11NN)
+probs <- attributes(coffee_11NN)$prob
+coffee_refactor <- cbind(coffee_refactor, probs)
+coffee_refactor_1 <- mutate(coffee_refactor, `1` = ifelse(coffee_11NN == "1", probs, (1-probs)))
+coffee_refactor_1 <- mutate(coffee_refactor_1, `0` = ifelse(coffee_11NN == "0", probs, (1-probs)))
+adjust_thres(coffee_refactor_1$`1`,.60, as.factor(coffee_data_test$bool_HIGH))
+```
