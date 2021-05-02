@@ -25,56 +25,46 @@ library(naniar)
 library(ggplot2)
 ```
 
-# Data set 1: Reviews of coffee shops
-
 ## Find out which columns have many missing values so that they can be discarded
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 twitter_data = read.csv("twitterBots.csv")
-twitter_data <- twitter_data[,-c(1,2,3,4,5,6,10,15,19)]
-twitter_data <- twitter_data[complete.cases(twitter_data), ]
 gg_miss_var(twitter_data)
-```
+twitter_data <- twitter_data[complete.cases(twitter_data), ]
 
+twitter_data <- twitter_data[,-c(1,2,3,4,5,6,10,15,19)]
+```
+We remove the rows with incomplete cases because we see with this gg_miss_var plot that there are nearly 600 cases that are missing "bot" values. Since we are created a system that predicts whether a Twitter account is a bot, we need each data point for training/testing to have a value for this. Additionally, we remove id, id_str, screen_name, location, description, url, created_at, status, and name because these are text columns that are unique for each data point and thus unnecessary to include in the training. 
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+head(twitter_data)
+```
+This is now what the twitter_data dataframe looks like.
+
+We now check the split of data to find the base rate.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 split <- table(twitter_data$bot)[2] / sum(table(twitter_data$bot))
 split
-# The base rate is 83.3% for identifying whether a coffee shop was high-rated or not.
-twitter_data[,5] = as.factor(twitter_data[,5])
-twitter_data[,5] = as.numeric(twitter_data[,5])
+```
+The split is 47.2%, meaning that roughly 47% of our data is for bots ("bot" = 1).
 
-twitter_data[,7] = as.factor(twitter_data[,7])
-twitter_data[,7] = as.numeric(twitter_data[,7])
-
-twitter_data[,8] = as.factor(twitter_data[,8])
-twitter_data[,8] = as.numeric(twitter_data[,8])
-
-twitter_data[,9] = as.factor(twitter_data[,9])
-twitter_data[,9] = as.numeric(twitter_data[,9])
-
-twitter_data[,10] = as.factor(twitter_data[,10])
-twitter_data[,10] = as.numeric(twitter_data[,10])
-
-twitter_data[,11] = as.factor(twitter_data[,11])
-
-
-
-twitter_data[,1] = as.numeric(twitter_data[,1])
-twitter_data[,2] = as.numeric(twitter_data[,2])
-twitter_data[,3] = as.numeric(twitter_data[,3])
-twitter_data[,4] = as.numeric(twitter_data[,4])
-twitter_data[,6] = as.numeric(twitter_data[,6])
-
-
+Now, we have to set the remaining variables as factors and then all (besides "bot") as numeric for analysis. We also scale all but "bot" for the knn training.
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+twitter_data[,c(5, 7, 8, 9, 10, 11)] <- lapply(twitter_data[,c(5, 7, 8, 9, 10, 11)], as.factor)
+twitter_data[,-11] <- lapply(twitter_data[,-11], as.numeric)
 
 # Scale the data
 twitter_data[, -c(11)] <- lapply(twitter_data[, -c(11)],function(x) scale(x))
-# Find correlations in the data 
-stat_correlations <- cor(twitter_data[,-11])
-# View(stat_correlations)
 ```
 
-## Plot k vs. accuracy to see how many neighbors to use
+Now, we check the correlation plot to see what we might want to remove from the dataframe. If two variables are highly correlated, then we don't need both of them for training our system.
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+# Find correlations in the data 
+stat_correlations <- cor(twitter_data[,-11])
+stat_correlations
+twitter_data <- subset(twitter_data, select = -listed_count)
+```
+The variables listed_count and followers_count have a correlation coefficient of 0.810702064. The rest of the pairs of variables have correlation coefficients below 0.5, so we will remove one of the two from that highly correlated pair, listed_count (though we could have removed followers_count instead). 
 
+Then, we split into train and test sets so that 80% of our data would be used for training and 20% for testing. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 set.seed(1982)
 bot_data_train_rows = sample(1:nrow(twitter_data),
@@ -87,8 +77,14 @@ bot_data_train = twitter_data[bot_data_train_rows, ]
 # Rows not used in training set, aka the test set
 bot_data_test = twitter_data[-bot_data_train_rows, ]
 # Check the number of rows in each set.
-# nrow(coffee_data_train)
-# nrow(coffee_data_test)
+nrow(bot_data_train)
+nrow(bot_data_test)
+```
+We confirm here that our train set has 80% of our data. We see that bot_data_train (our training set) has 2238 elements while bot_data_test (our testing set) has 559 elements. This aligns with our goal for separating our data points.
+
+
+Now, we create an elbow plot to check which k value would maximize the accuracy of our knn model.
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # Figure out which K to use
 # install.packages("class") 
 library(class)
@@ -108,10 +104,10 @@ chooseK = function(k, train_set, val_set, train_class, val_class){
 knn_diff_k_bot = sapply(seq(1, 21, by = 2),  #<- set k to be odd number from 1 to 21
                          function(x) chooseK(x,
                                              train_set =
-                                               bot_data_train[, -c(11)],
-                                             val_set = bot_data_test[, -c(11)],
-                                             train_class = bot_data_train[, 11],
-                                             val_class = bot_data_test[, 11]))
+                                               bot_data_train[, -c(10)],
+                                             val_set = bot_data_test[, -c(10)],
+                                             train_class = bot_data_train[, 10],
+                                             val_class = bot_data_test[, 10]))
 knn_diff_k_bot = tibble(k = knn_diff_k_bot[1,],
                              accuracy = knn_diff_k_bot[2,])
 ggplot(knn_diff_k_bot,
@@ -119,35 +115,37 @@ ggplot(knn_diff_k_bot,
   geom_line(color = "orange", size = 1.5) +
   geom_point(size = 3)
 ```
+We see that 11 is our best k value for training our model. 
 
-## Run KNN analysis with 11 nearest neighbors and analyze the accuracy of the model
+Now, we run KNN analysis with 11 nearest neighbors and analyze the accuracy of the model
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # Try 7 nearest neighbors
-bot_7NN <-  knn(train = bot_data_train[, -11],
-               test = bot_data_test[, -11],
-               cl = bot_data_train[, 11],
-               k = 7,
+bot_11NN <-  knn(train = bot_data_train[, -10],
+               test = bot_data_test[, -10],
+               cl = bot_data_train[, 10],
+               k = 11,
                use.all = TRUE,
                prob = TRUE)
 # str(coffee_11NN)
 # View(coffee_11NN)
-kNN_res = table(bot_7NN,
+kNN_res = table(bot_11NN,
                 bot_data_test$bot)
 # View(kNN_res)
 conf_matrix_initial <- kNN_res
 # conf_matrix_initial
-#install.packages("caret")
+install.packages("caret")
 library(caret)
-#install.packages("e1071")
+install.packages("e1071")
 library(e1071)
-#install.packages("Rcpp")
+install.packages("Rcpp")
 library(Rcpp)
 ```
+
 
 ## Evaluate model {.tabset}
 ### Confusion matrix
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
-conf_matrix <- confusionMatrix(as.factor(bot_7NN), as.factor(bot_data_test$bot), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
+conf_matrix <- confusionMatrix(as.factor(bot_11NN), as.factor(bot_data_test$bot), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
 conf_matrix 
 # conf_matrix$overall["Accuracy"]
 # conf_matrix$overall["Kappa"]
@@ -155,25 +153,28 @@ conf_matrix
 # conf_matrix$byClass["Specificity"]
 conf_matrix$byClass["F1"]
 ```
+We see from this confusion matrix that the accuracy is 86.23%, which is far above the base rate of 47%. This means that about 86% of the time, our system can correctly differentiate between a bot and a non-bot account.
+The kappa is 0.7245, which is considered moderately strong for inter-rater reliability. 
+The sensitivity (or proportion of true positives) is 0.85, which means there is an 85% chance of the system correctly identifying a bot.
+The specificity (or proportion of true negatives) is 0.8746, which means that there is an 87.5% chance of detecting when something is not a bot.
+The F1 is 0.86. This indicates a decently strong accuracy with our system. 
+We see in this confusion matrix that there are 35 cases of false positives (or 12.5% of non-bots are mislabeled) and 42 cases of false negatives (or 15% of bots are mislabeled). We have a  well-balanced dataset, with 279 cases of non-bots and 280 cases of bots, too.
 
 ### Log Loss
-
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 install.packages("MLmetrics")
 library(MLmetrics)
-str(as.numeric(attributes(bot_7NN)$prob))
-str(bot_data_test$bot)
-?LogLoss
-LogLoss(attributes(bot_7NN)$prob, as.numeric(bot_data_test$bot))
-# coffee_data_test$result = coffee_11NN
-# F1_Score(as.numeric(coffee_data_test$result),as.numeric(coffee_data_test$bool_HIGH))
+# str(as.numeric(attributes(bot_11NN)$prob))
+# str(bot_data_test$bot)
+
+LogLoss(attributes(bot_11NN)$prob, as.numeric(bot_data_test$bot))
 ```
 
 ### AUC
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 install.packages("ROCR")
 library(ROCR)
-pred <- prediction(as.numeric(attributes(bot_7NN)$prob), as.numeric(bot_data_test$bot))
+pred <- prediction(as.numeric(attributes(bot_11NN)$prob), as.numeric(bot_data_test$bot))
 #View(pred)
 perf <- performance(pred,"tpr","fpr")
 plot(perf, colorize=TRUE)
@@ -183,16 +184,19 @@ perf_AUC@y.values[[1]]
 ```
 
 ## Miss-Classification Errors
+We have slightly more false negatives than false positives. That being said, we feel that the priority for this system is to detect when an account is actually a bot account. Assuming that this system is used to flag/remove Twitter accounts that are bots, if we mislabel an account as a non-bot, then we may delete the account when it holds meaning for its human owner. So, we want to minimize false positives. This means that we should decrease the threshold.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 adjust_thres <- function(x, y, z) {
   #x=pred_probablities, y=threshold, z=test_outcome
   thres <- as.factor(ifelse(x > y, 1,0))
   confusionMatrix(thres, z, positive = "1", dnn=c("Prediction", "Actual"), mode = "everything")
 }
-coffee_refactor <- as.data.frame(coffee_11NN)
-probs <- attributes(coffee_11NN)$prob
-coffee_refactor <- cbind(coffee_refactor, probs)
-coffee_refactor_1 <- mutate(coffee_refactor, `1` = ifelse(coffee_11NN == "1", probs, (1-probs)))
-coffee_refactor_1 <- mutate(coffee_refactor_1, `0` = ifelse(coffee_11NN == "0", probs, (1-probs)))
-adjust_thres(coffee_refactor_1$`1`,.60, as.factor(coffee_data_test$bool_HIGH))
+bot_refactor <- as.data.frame(bot_11NN)
+probs <- attributes(bot_11NN)$prob
+bot_refactor <- cbind(bot_refactor, probs)
+bot_refactor_1 <- mutate(bot_refactor, `1` = ifelse(bot_11NN == "1", probs, (1-probs)))
+bot_refactor_1 <- mutate(bot_refactor_1, `0` = ifelse(bot_11NN == "0", probs, (1-probs)))
+
+thresholds <- lapply(0.2:0.5:0.05, as.factor, x=bot_refactor_1$`1`, z=as.factor(bot_data_test$bool_HIGH))
 ```
+
