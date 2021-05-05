@@ -167,15 +167,22 @@ library(MLmetrics)
 # str(as.numeric(attributes(bot_11NN)$prob))
 # str(bot_data_test$bot)
 
-LogLoss(attributes(bot_11NN)$prob, as.numeric(bot_data_test$bot))
+attributes(bot_11NN)$prob
+bot_11NNDF <- as.data.frame(bot_11NN)
+
+test <- ifelse(bot_11NNDF[,'bot_11NN'] == 1, attributes(bot_11NN)$prob,1-attributes(bot_11NN)$prob)
+
+test
+
+LogLoss(test, as.numeric(bot_data_test$bot))
 ```
 
 ### AUC
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 install.packages("ROCR")
 library(ROCR)
-pred <- prediction(as.numeric(attributes(bot_11NN)$prob), as.numeric(bot_data_test$bot))
-#View(pred)
+pred <- prediction(test, as.numeric(bot_data_test$bot))
+# View(pred)
 perf <- performance(pred,"tpr","fpr")
 plot(perf, colorize=TRUE)
 abline(a=0, b= 1)
