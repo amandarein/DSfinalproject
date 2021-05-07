@@ -17,13 +17,19 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load-packages, include=FALSE}
-install.packages("naniar")
+# install.packages("naniar")
 library(dplyr)
 library(magrittr)
 library(knitr)
 library(naniar)
 library(ggplot2)
 ```
+
+# Mission
+Our goal is to create a system that can properly detect whether a Twitter account is a "bot", meaning that it is not controlled by a human but instead by some algorithm or automated program. Twitter and other social media companies struggle to detect these "bot" accounts but seek to do so in order to delete them, as it is not the intent of a social media or communication platform to include bots that are falsifying themselves as real people! We found a data set that includes many different metrics about Twitter accounts, such as number of followers, number of friends, language of account, and number of favorites. Each of these accounts is labeled as a bot or not, too, which gives us the opportunity to use this data to train a model to detect which Twitter accounts are bots! We see this as not only a great opportunity to help Twitter remove their bot accounts; it is also good practice for us in training and evaluating models via the techniques we learned this past semester.
+
+# Data Cleaning
+Data cleaning is always an important first step to building predictive models, as data sets are often riddled with empty cells, malformed cells, and even highly correlated rows that do not both need to be present in the set. 
 
 ## Find out which columns have many missing values so that they can be discarded
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
@@ -33,18 +39,22 @@ twitter_data <- twitter_data[complete.cases(twitter_data), ]
 
 twitter_data <- twitter_data[,-c(1,2,3,4,5,6,10,15,19)]
 ```
-We remove the rows with incomplete cases because we see with this gg_miss_var plot that there are nearly 600 cases that are missing "bot" values. Since we are created a system that predicts whether a Twitter account is a bot, we need each data point for training/testing to have a value for this. Additionally, we remove id, id_str, screen_name, location, description, url, created_at, status, and name because these are text columns that are unique for each data point and thus unnecessary to include in the training. 
+
+We remove the rows with incomplete cases because we see with this gg_miss_var plot that there are nearly 600 cases that are missing "bot" values. Since we are created a system that predicts whether a Twitter account is a bot, we need each data point for training/testing to have a value for this. Additionally, we remove id, id_str, screen_name, location, description, url, created_at, status, and name because these are text columns that are unique for each data point and thus unnecessary to include in the training.
+
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 head(twitter_data)
 ```
-This is now what the twitter_data dataframe looks like.
+
+This is now what the twitter_data dataframe looks like. We have 10 variables on which to form predictions, then the 'bot' variable that is 1 when a Twitter account is a bot and 0 when it is not. 
 
 We now check the split of data to find the base rate.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 split <- table(twitter_data$bot)[2] / sum(table(twitter_data$bot))
 split
 ```
-The split is 47.2%, meaning that roughly 47% of our data is for bots ("bot" = 1).
+
+The split is 47.2%, meaning that roughly 47% of our data is for bots ("bot" = 1). This indicates a well-balanced data set, which is ideal for building a model.
 
 Now, we have to set the remaining variables as factors and then all (besides "bot") as numeric for analysis. We also scale all but "bot" for the knn training.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
@@ -62,8 +72,11 @@ stat_correlations <- cor(twitter_data[,-11])
 stat_correlations
 twitter_data <- subset(twitter_data, select = -listed_count)
 ```
+
 The variables listed_count and followers_count have a correlation coefficient of 0.810702064. The rest of the pairs of variables have correlation coefficients below 0.5, so we will remove one of the two from that highly correlated pair, listed_count (though we could have removed followers_count instead). 
 
+# Training the Model
+## Splitting into Training and Testing Sets
 Then, we split into train and test sets so that 80% of our data would be used for training and 20% for testing. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 set.seed(1982)
@@ -80,9 +93,10 @@ bot_data_test = twitter_data[-bot_data_train_rows, ]
 nrow(bot_data_train)
 nrow(bot_data_test)
 ```
-We confirm here that our train set has 80% of our data. We see that bot_data_train (our training set) has 2238 elements while bot_data_test (our testing set) has 559 elements. This aligns with our goal for separating our data points.
 
+We confirm here that our train set has 80% of our data. We see that bot_data_train (our training set) has 2238 elements while bot_data_test (our testing set) has 559 elements. This aligns with our goal for separating our data points with 80-20% train-test.
 
+## Elbow Plot to find Best K Value for KNN
 Now, we create an elbow plot to check which k value would maximize the accuracy of our knn model.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # Figure out which K to use
@@ -115,11 +129,12 @@ ggplot(knn_diff_k_bot,
   geom_line(color = "orange", size = 1.5) +
   geom_point(size = 3)
 ```
-We see that 11 is our best k value for training our model. 
 
+We see that 11 is our best k value for training our model because it gives us a model with the highest accuracy. 
+
+## Run KNN with Best K Value (K = 11)
 Now, we run KNN analysis with 11 nearest neighbors and analyze the accuracy of the model
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
-# Try 7 nearest neighbors
 bot_11NN <-  knn(train = bot_data_train[, -10],
                test = bot_data_test[, -10],
                cl = bot_data_train[, 10],
@@ -133,17 +148,17 @@ kNN_res = table(bot_11NN,
 # View(kNN_res)
 conf_matrix_initial <- kNN_res
 # conf_matrix_initial
-install.packages("caret")
+# install.packages("caret")
 library(caret)
-install.packages("e1071")
+# install.packages("e1071")
 library(e1071)
-install.packages("Rcpp")
+# install.packages("Rcpp")
 library(Rcpp)
 ```
 
 
-## Evaluate model {.tabset}
-### Confusion matrix
+# Evaluate Model {.tabset}
+## Confusion Matrix
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 conf_matrix <- confusionMatrix(as.factor(bot_11NN), as.factor(bot_data_test$bot), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
 conf_matrix 
@@ -153,33 +168,35 @@ conf_matrix
 # conf_matrix$byClass["Specificity"]
 conf_matrix$byClass["F1"]
 ```
+
 We see from this confusion matrix that the accuracy is 86.23%, which is far above the base rate of 47%. This means that about 86% of the time, our system can correctly differentiate between a bot and a non-bot account.
 The kappa is 0.7245, which is considered moderately strong for inter-rater reliability. 
 The sensitivity (or proportion of true positives) is 0.85, which means there is an 85% chance of the system correctly identifying a bot.
 The specificity (or proportion of true negatives) is 0.8746, which means that there is an 87.5% chance of detecting when something is not a bot.
 The F1 is 0.86. This indicates a decently strong accuracy with our system. 
-We see in this confusion matrix that there are 35 cases of false positives (or 12.5% of non-bots are mislabeled) and 42 cases of false negatives (or 15% of bots are mislabeled). We have a  well-balanced dataset, with 279 cases of non-bots and 280 cases of bots, too.
+We also see in this confusion matrix that there are 35 cases of false positives (or 12.5% of non-bots are mislabeled) and 42 cases of false negatives (or 15% of bots are mislabeled). We have a  well-balanced dataset, with 279 cases of non-bots and 280 cases of bots, too.
 
-### Log Loss
+## Log Loss
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
-install.packages("MLmetrics")
+# install.packages("MLmetrics")
 library(MLmetrics)
 # str(as.numeric(attributes(bot_11NN)$prob))
 # str(bot_data_test$bot)
 
-attributes(bot_11NN)$prob
+# attributes(bot_11NN)$prob
 bot_11NNDF <- as.data.frame(bot_11NN)
 
 test <- ifelse(bot_11NNDF[,'bot_11NN'] == 1, attributes(bot_11NN)$prob,1-attributes(bot_11NN)$prob)
-
-test
+# test
 
 LogLoss(test, as.numeric(bot_data_test$bot))
 ```
 
-### AUC
+We have a LogLoss score of 2.78 for this model. LogLoss is a measurement of how close the prediction probability is to the actual value. As such, this score will penalize very confident incorrect guesses by the system. This score is higher than we'd like for our model, so this means that our model is confidently making some false predictions. This is something we will keep in mind!
+
+## AUC
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
-install.packages("ROCR")
+# install.packages("ROCR")
 library(ROCR)
 pred <- prediction(test, as.numeric(bot_data_test$bot))
 # View(pred)
@@ -190,8 +207,10 @@ perf_AUC <- performance(pred,"auc")
 perf_AUC@y.values[[1]]
 ```
 
-## Miss-Classification Errors
-We have slightly more false negatives than false positives. That being said, we feel that the priority for this system is to detect when an account is actually a bot account. Assuming that this system is used to flag/remove Twitter accounts that are bots, if we mislabel an account as a non-bot, then we may delete the account when it holds meaning for its human owner. So, we want to minimize false positives. This means that we should decrease the threshold.
+As you can see from this graph, our AUC is pretty good! There is significant area between our curve (the multicolored one) and the y = x line that represents random guessing. The AUC value is 0.93, which tells us that our model is pretty good at distinguishing between our two classes (whether or not an account is a bot).
+
+# Adjusting Threshold for Misclassification Errors
+We have slightly more false negatives than false positives. That being said, we feel that the priority for this system is to detect when an account is actually a bot account. Assuming that this system is used to flag/remove Twitter accounts that are bots, if we mislabel an account as a non-bot, then we may delete the account when it holds meaning for its human owner. So, we want to minimize false positives. This means that we should increase the threshold.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 adjust_thres <- function(x, y, z) {
   #x=pred_probablities, y=threshold, z=test_outcome
@@ -204,6 +223,13 @@ bot_refactor <- cbind(bot_refactor, probs)
 bot_refactor_1 <- mutate(bot_refactor, `1` = ifelse(bot_11NN == "1", probs, (1-probs)))
 bot_refactor_1 <- mutate(bot_refactor_1, `0` = ifelse(bot_11NN == "0", probs, (1-probs)))
 
-thresholds <- lapply(0.2:0.5:0.05, as.factor, x=bot_refactor_1$`1`, z=as.factor(bot_data_test$bool_HIGH))
+# thresholds <- lapply(0.2:0.5:0.05, as.factor, x=bot_refactor_1$`1`, z=as.factor(bot_data_test$bot))
+# adjust_thres(bot_refactor_1$`1`, 0.9, as.factor(bot_data_test$bot))
 ```
+* When we adjust the threshold to 0.6, we have an accuracy of 0.8479, a kappa of 0.6959, a sensitivity of 0.7964, and a specificity of 0.8996. We have 28 cases of false positives.
 
+* When we adjust the threshold to 0.7, we have an accuracy of 0.8336, a kappa of 0.6674, a sensitivity of 0.7429, and a specificity of 0.9247. We have 21 cases of false positives.
+
+* When we adjust the threshold to 0.8, we have an accuracy of 0.8032, a kappa of 0.6066, a sensitivity of 0.6679, and a specificity of 0.9391. We have 17 cases of false positives.
+
+* When we adjust the threshold to 0.9, we have an accuracy of 0.7746, a kappa of 0.5495, a sensitivity of 0.5857, and a specificity of 0.9642 We have 10 cases of false positives. 
