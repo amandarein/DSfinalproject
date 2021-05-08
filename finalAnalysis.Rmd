@@ -18,11 +18,17 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r load-packages, include=FALSE}
 # install.packages("naniar")
+#install.packages("randomForest")
+#install.packages("rio")
+library(randomForest)
+library(rio)
 library(dplyr)
 library(magrittr)
 library(knitr)
 library(naniar)
 library(ggplot2)
+library(plotly)
+library(caret)
 ```
 
 # Mission
@@ -233,3 +239,183 @@ bot_refactor_1 <- mutate(bot_refactor_1, `0` = ifelse(bot_11NN == "0", probs, (1
 * When we adjust the threshold to 0.8, we have an accuracy of 0.8032, a kappa of 0.6066, a sensitivity of 0.6679, and a specificity of 0.9391. We have 17 cases of false positives.
 
 * When we adjust the threshold to 0.9, we have an accuracy of 0.7746, a kappa of 0.5495, a sensitivity of 0.5857, and a specificity of 0.9642 We have 10 cases of false positives. 
+
+# Random Forest
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+mytry_tune <- function(x){
+  xx <- dim(x)[2]-1
+  sqrt(xx)
+}
+
+bot_mytry <- mytry_tune(twitter_data)
+
+set.seed(1900)
+bot_rf = randomForest(as.factor(bot)~.,
+                            bot_data_train,
+                            ntree = 1000,
+                            mtry = bot_mytry,
+                            replace = TRUE,
+                            sampsize = 100,
+                            nodesize = 5,
+                            importance = TRUE,
+                            proximity = TRUE,
+                            norm.votes = TRUE,
+                            do.trace = TRUE,
+                            keep.forest = TRUE,
+                            keep.inbag = TRUE)  
+
+bot_rf
+table(twitter_data$bot)
+1321/2797
+
+```
+
+# Evaluate Model {.tabset}
+## Confusion Matrix
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+bot_rf$confusion
+bot_rf_acc = sum(bot_rf$confusion[row(bot_rf$confusion) == 
+                                                col(bot_rf$confusion)]) / 
+  sum(bot_rf$confusion)
+
+# Accuracy
+bot_rf_acc #.88 (pretty good)
+
+```
+
+## Variable Importance
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+# The "importance" argument provides a table that includes the importance
+# of each variable to the accuracy of the classification.
+View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE))) #type 1 is error on oob, 
+                                                                      # type 2 is total decrease
+# in node impurity as measured by the Gini index, look at the differences, stop by wine for example. 
+                                                        # scale divides the measures by 
+                                                        # their standard errors
+
+View(as.data.frame(bot_rf$importance)) #all the metrics together,not scaled
+
+# Looks like friends_count is most important variable
+
+```
+
+## Error Rates
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+#View(as.data.frame(bot_rf$err.rate))
+
+err.rate <- as.data.frame(bot_rf$err.rate) # for each tree
+
+#View(err.rate)
+
+```
+
+## Error Visualization
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+bot_rf_error = data.frame(1:nrow(bot_rf$err.rate),
+                                bot_rf$err.rate)
+
+colnames(bot_rf_error) = c("Number of Trees", "Out of the Box",
+                                 "Not bot", "Bot")
+
+bot_rf_error$Diff <- bot_rf_error$Bot-bot_rf_error$`Not bot`
+
+#View(bot_rf_error)
+
+fig <- plot_ly(x=bot_rf_error$`Number of Trees`, y=bot_rf_error$Diff,name="Diff", type = 'scatter', mode = 'lines')
+fig <- fig %>% add_trace(y=bot_rf_error$`Out of the Box`, name="OOB_Er")
+fig <- fig %>% add_trace(y=bot_rf_error$`Not bot`, name="Not bot")
+fig <- fig %>% add_trace(y=bot_rf_error$Bot, name="Bot")
+
+fig
+```
+
+# Optimized Random Forest Model
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+# Depends what metric we want to optimize... we can decide later but for this one I'll focus on correctly identifying bots (positive class)
+
+#View(bot_rf_error)
+
+# Minimize bot and OOB --> we'll try 20 trees
+set.seed(1900)
+op_bot_rf = randomForest(as.factor(bot)~.,
+                            bot_data_train,
+                            ntree = 20,
+                            mtry = bot_mytry,
+                            replace = TRUE,
+                            sampsize = 100,
+                            nodesize = 5,
+                            importance = TRUE,
+                            proximity = TRUE,
+                            norm.votes = TRUE,
+                            do.trace = TRUE,
+                            keep.forest = TRUE,
+                            keep.inbag = TRUE)  
+
+op_bot_rf
+
+bot_rf$confusion
+op_bot_rf$confusion
+
+# Optimized model is a lot better; classifying more bots as bots
+
+```
+
+# Optimized Model Visualization
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+dev.off()
+varImpPlot(op_bot_rf,
+           sort = TRUE,
+           n.var = 10, 
+           main = "Important Factors for Identifying Twitter Bots",
+           bg = "white",
+           color = "blue",
+           lcolor = "orange")
+
+```
+
+# Optimized Model Prediction
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+bot_predict = predict(op_bot_rf,
+                            bot_data_test,
+                            type = "response",
+                            predict.all = TRUE,
+                            proximity = TRUE)
+
+```
+
+# Evaluate Model {.tabset}
+## Confusion Matrix
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+bot_test_pred = data.frame(bot_data_test, 
+                                 Prediction = bot_predict$predicted$aggregate)
+
+# Create the confusion matrix.
+bot_test_matrix_rf = table(bot_test_pred$bot, 
+                            bot_test_pred$Prediction)
+
+bot_test_matrix_rf
+
+confusionMatrix(bot_test_pred$Prediction,bot_test_pred$bot,positive = "1", 
+                dnn=c("Prediction", "Actual"), mode = "everything")
+
+
+```
+
+## Error Rate
+```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+bot_test_error_rate_rf = sum(bot_test_matrix_rf[row(bot_test_matrix_rf) != 
+                                                    col(bot_test_matrix_rf)]) / sum(bot_test_matrix_rf)
+
+bot_test_error_rate_rf
+
+```
+
