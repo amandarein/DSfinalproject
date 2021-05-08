@@ -17,9 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load-packages, include=FALSE}
-# install.packages("naniar")
-#install.packages("randomForest")
-#install.packages("rio")
+install.packages("naniar")
+install.packages("randomForest")
+install.packages("rio")
 library(randomForest)
 library(rio)
 library(dplyr)
@@ -148,10 +148,6 @@ bot_11NN <-  knn(train = bot_data_train[, -10],
                use.all = TRUE,
                prob = TRUE)
 
-kNN_res = table(bot_7NN,
-=======
-# str(coffee_11NN)
-# View(coffee_11NN)
 kNN_res = table(bot_11NN,
                 bot_data_test$bot)
 # View(kNN_res)
@@ -292,13 +288,13 @@ bot_rf_acc #.88 (pretty good)
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # The "importance" argument provides a table that includes the importance
 # of each variable to the accuracy of the classification.
-View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE))) #type 1 is error on oob, 
+# View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE))) #type 1 is error on oob, 
                                                                       # type 2 is total decrease
 # in node impurity as measured by the Gini index, look at the differences, stop by wine for example. 
                                                         # scale divides the measures by 
                                                         # their standard errors
 
-View(as.data.frame(bot_rf$importance)) #all the metrics together,not scaled
+as.data.frame(bot_rf$importance) #all the metrics together,not scaled
 
 # Looks like friends_count is most important variable
 
@@ -309,7 +305,9 @@ View(as.data.frame(bot_rf$importance)) #all the metrics together,not scaled
 
 #View(as.data.frame(bot_rf$err.rate))
 
-err.rate <- as.data.frame(bot_rf$err.rate) # for each tree
+err.rate <- as.data.frame(bot_rf$err.rate) 
+
+# for each tree
 
 #View(err.rate)
 
@@ -372,13 +370,13 @@ op_bot_rf$confusion
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
 dev.off()
-varImpPlot(op_bot_rf,
-           sort = TRUE,
-           n.var = 10, 
-           main = "Important Factors for Identifying Twitter Bots",
-           bg = "white",
-           color = "blue",
-           lcolor = "orange")
+# varImpPlot(op_bot_rf,
+#            sort = TRUE,
+#            n.var = 10, 
+#            main = "Important Factors for Identifying Twitter Bots",
+#            bg = "white",
+#            color = "blue",
+#            lcolor = "orange")
 
 ```
 
