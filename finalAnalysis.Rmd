@@ -129,8 +129,7 @@ bot_7NN <-  knn(train = bot_data_train[, -11],
                k = 7,
                use.all = TRUE,
                prob = TRUE)
-# str(coffee_11NN)
-# View(coffee_11NN)
+
 kNN_res = table(bot_7NN,
                 bot_data_test$bot)
 # View(kNN_res)
@@ -173,8 +172,9 @@ LogLoss(attributes(bot_7NN)$prob, as.numeric(bot_data_test$bot))
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 install.packages("ROCR")
 library(ROCR)
+# add DF that has prob that value is 1
 pred <- prediction(as.numeric(attributes(bot_7NN)$prob), as.numeric(bot_data_test$bot))
-#View(pred)
+pred@predictions
 perf <- performance(pred,"tpr","fpr")
 plot(perf, colorize=TRUE)
 abline(a=0, b= 1)
