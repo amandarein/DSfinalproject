@@ -17,9 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load-packages, include=FALSE}
-# install.packages("naniar")
-#install.packages("randomForest")
-#install.packages("rio")
+install.packages("naniar")
+install.packages("randomForest")
+install.packages("rio")
 library(randomForest)
 library(rio)
 library(dplyr)
@@ -148,8 +148,7 @@ bot_11NN <-  knn(train = bot_data_train[, -10],
                k = 11,
                use.all = TRUE,
                prob = TRUE)
-# str(coffee_11NN)
-# View(coffee_11NN)
+
 kNN_res = table(bot_11NN,
                 bot_data_test$bot)
 # View(kNN_res)
@@ -297,6 +296,15 @@ We can use the importance function to returns the importance of each predictor v
 View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE)))
 
 View(as.data.frame(bot_rf$importance))
+# The "importance" argument provides a table that includes the importance
+# of each variable to the accuracy of the classification.
+# View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE))) #type 1 is error on oob, 
+                                                                      # type 2 is total decrease
+# in node impurity as measured by the Gini index, look at the differences, stop by wine for example. 
+                                                        # scale divides the measures by 
+                                                        # their standard errors
+
+as.data.frame(bot_rf$importance) #all the metrics together,not scaled
 
 # Looks like friends_count is most important variable
 
@@ -308,7 +316,9 @@ Next, we will calculate the error rate for each individual tree. We will use the
 
 #View(as.data.frame(bot_rf$err.rate))
 
-err.rate <- as.data.frame(bot_rf$err.rate) # for each tree
+err.rate <- as.data.frame(bot_rf$err.rate) 
+
+# for each tree
 
 View(err.rate)
 
@@ -377,6 +387,14 @@ We have the confusion matrices for the first and second random forest, respectiv
 
 bot_rf$confusion
 op_bot_rf$confusion
+dev.off()
+# varImpPlot(op_bot_rf,
+#            sort = TRUE,
+#            n.var = 10, 
+#            main = "Important Factors for Identifying Twitter Bots",
+#            bg = "white",
+#            color = "blue",
+#            lcolor = "orange")
 
 ```
 
