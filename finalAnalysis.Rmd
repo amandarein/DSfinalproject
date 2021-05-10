@@ -17,9 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load-packages, include=FALSE}
-install.packages("naniar")
-install.packages("randomForest")
-install.packages("rio")
+#install.packages("naniar")
+#install.packages("randomForest")
+#install.packages("rio")
 library(randomForest)
 library(rio)
 library(dplyr)
@@ -244,7 +244,7 @@ bot_refactor_1 <- mutate(bot_refactor_1, `0` = ifelse(bot_11NN == "0", probs, (1
 Next, we will run a random forest model on our Twitter bot data. The random forest algorithm uses several different decision trees that evaluates different subsets of variables on different subsets of data. The algorithm helps solve the over-fitting problem that can result from using a single decision tree. After optimizing the random forest model, we will compare our results with the results of the kNN analysis. 
 
 We will use the same train and test datasets that we used for the kNN analysis (80/20 train/test split). Next, we will determine the mytry value for the model. The general rule is to start with a mytry value equal to the square root of the number of predictors. In our case, this is 3. Then, we will build an initial random forest on the training data with 1,000 trees. 
-```{r, message=FALSE, echo = FALSE, warning=FALSE}
+```{r, message=FALSE, include = FALSE, warning=FALSE}
 
 mytry_tune <- function(x){
   xx <- dim(x)[2]-1
@@ -293,9 +293,9 @@ bot_rf_acc #.88 (pretty good)
 We can use the importance function to returns the importance of each predictor variable to the accuracy of the classification. Based on our results, we observe that friends_count is the most important variable. This makes sense; we would expect that bot accounts would have less friends than real accounts run by humans. Other important variables include followers_count and favorites_count.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
-View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE)))
+#View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE)))
 
-View(as.data.frame(bot_rf$importance))
+#View(as.data.frame(bot_rf$importance))
 # The "importance" argument provides a table that includes the importance
 # of each variable to the accuracy of the classification.
 # View(as.data.frame(importance(bot_rf, type = 2, scale = TRUE))) #type 1 is error on oob, 
@@ -311,7 +311,7 @@ as.data.frame(bot_rf$importance) #all the metrics together,not scaled
 ```
 
 ## Error Rates
-Next, we will calculate the error rate for each individual tree. We will use these 1,000 error rates to visualize the overall performance of the random forest. 
+Next, we will calculate the error rate for each individual tree. We will use these 1,000 error rates to visualize the overall performance of the random forest. The figure below visualizes how the error rte changes as we add more trees. The x-axis is the number of trees and the y-axis is the error rate. We include four different error rates in the plot: the error rate for bots, not bots, OOB and the difference between error rates. The OOB (out of bag) error rate measures the prediction error of the random forest. We would like to minimize the error for all four, however, we should be cautious when minimizing the difference between error rates because a small difference does not equal small error rates. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
 #View(as.data.frame(bot_rf$err.rate))
@@ -320,13 +320,7 @@ err.rate <- as.data.frame(bot_rf$err.rate)
 
 # for each tree
 
-View(err.rate)
-
-```
-
-## Error Visualization
-The figure below visualizes how the error rte changes as we add more trees. The x-axis is the number of trees and the y-axis is the error rate. We include four different error rates in the plot: the error rate for bots, not bots, OOB and the difference between error rates. The OOB (out of bag) error rate measures the prediction error of the random forest. We would like to minimize the error for all four, however, we should be cautious when minimizing the difference between error rates because a small difference does not equal small error rates. 
-```{r, message=FALSE, echo = FALSE, warning=FALSE}
+#View(err.rate)
 
 bot_rf_error = data.frame(1:nrow(bot_rf$err.rate),
                                 bot_rf$err.rate)
@@ -350,11 +344,11 @@ fig
 Now that we have a base random forest, we can tune the parameters to create an optimized model. In this situation, Twitter wants to correctly identify as many bots as possible so they can remove the accounts. Therefore, we want to focus on correctly identifying bots (the positive class). However, Twitter does not want to incorrectly identify a real account as a bot and delete a human's account, so we would like to see the false positive rate decrease as well. 
 
 We would like to use the number of trees that would minimize both the bot error and OOB error. Looking at the error rates, we will build another random forest with 20 trees using the same mytry value and training data. 
-```{r, message=FALSE, echo = FALSE, warning=FALSE}
+```{r, message=FALSE, include = FALSE, warning=FALSE}
 
 # Depends what metric we want to optimize... we can decide later but for this one I'll focus on correctly identifying bots (positive class)
 
-View(bot_rf_error)
+#View(bot_rf_error)
 
 # Minimize bot and OOB --> we'll try 20 trees
 set.seed(1900)
@@ -387,14 +381,6 @@ We have the confusion matrices for the first and second random forest, respectiv
 
 bot_rf$confusion
 op_bot_rf$confusion
-dev.off()
-# varImpPlot(op_bot_rf,
-#            sort = TRUE,
-#            n.var = 10, 
-#            main = "Important Factors for Identifying Twitter Bots",
-#            bg = "white",
-#            color = "blue",
-#            lcolor = "orange")
 
 ```
 
@@ -434,7 +420,7 @@ confusionMatrix(bot_test_pred$Prediction,bot_test_pred$bot,positive = "1",
 The top 3 important variables are the same as in the previous random forest: friends_count, followers_count and favorites_count. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
-View(as.data.frame(op_bot_rf$importance))
+as.data.frame(op_bot_rf$importance)
 
 ```
 
@@ -452,6 +438,20 @@ bot_test_error_rate_rf * 100
 ## ROC and AUC
 Finally, we will visualize the performance of our random forest by creating a ROC curve and calculating the area under the curve (AUC). As we can see in the plot below, the ROC curve is close to the 90-degree angle maximum and the AUC is 0.95. This is very good and indicates that our model does a great job at predicting the correct classes.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
+
+bot_rf_prediction = as_tibble(as.numeric(as.character(op_bot_rf$votes[,2])))
+
+# Let's also take the actual classification of each data point and convert
+# it to a data frame with numbers. R classifies a point in either bucket 
+# at a 50% threshold.
+bot_train_actual = tibble(as.factor(bot_data_train[,10]))
+
+bot_prediction_comparison = prediction(bot_rf_prediction,
+                                             bot_train_actual)
+
+bot_pred_performance = performance(bot_prediction_comparison, 
+                                         measure = "tpr",
+                                         x.measure = "fpr")
 
 plot(bot_pred_performance, 
      col = "red", 
