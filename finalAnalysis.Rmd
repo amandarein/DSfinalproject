@@ -1,7 +1,7 @@
 ---
-title: "Predicting Twitter Bots: kNN and Random Forest"
+title: "Predicting Twitter Bots: KNN and Random Forest"
 author: "Belen Gomez Grimaldi, Amanda Rein, Kay Mattern"
-date: "4/20/2021"
+date: "5/14/2021"
 output:
   html_document:
     toc: TRUE
@@ -38,7 +38,7 @@ Our goal is to create a system that can properly detect whether a Twitter accoun
 # Data Cleaning
 Data cleaning is always an important first step to building predictive models, as data sets are often riddled with empty cells, malformed cells, and even highly correlated rows that do not both need to be present in the set. 
 
-## Find out which columns have many missing values so that they can be discarded
+## Handle Missing Cells
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 twitter_data = read.csv("twitterBots.csv")
 gg_miss_var(twitter_data)
@@ -55,6 +55,7 @@ head(twitter_data)
 
 This is now what the twitter_data dataframe looks like. We have 10 variables on which to form predictions, then the 'bot' variable that is 1 when a Twitter account is a bot and 0 when it is not. 
 
+## Find Base Rate
 We now check the split of data to find the base rate.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 split <- table(twitter_data$bot)[2] / sum(table(twitter_data$bot))
@@ -63,7 +64,7 @@ split
 
 The split is 47.2%, meaning that roughly 47% of our data is for bots ("bot" = 1). This indicates a well-balanced data set, which is ideal for building a model.
 
-Now, we have to set the remaining variables as factors and then all (besides "bot") as numeric for analysis. We also scale all but "bot" for the knn training.
+Now, we have to set the remaining variables as factors and then all (besides "bot") as numeric for analysis. We also scale all but "bot" for the KNN training.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 twitter_data[,c(5, 7, 8, 9, 10, 11)] <- lapply(twitter_data[,c(5, 7, 8, 9, 10, 11)], as.factor)
 twitter_data[,-11] <- lapply(twitter_data[,-11], as.numeric)
@@ -72,18 +73,22 @@ twitter_data[,-11] <- lapply(twitter_data[,-11], as.numeric)
 twitter_data[, -c(11)] <- lapply(twitter_data[, -c(11)],function(x) scale(x))
 ```
 
+## Check Correlations
 Now, we check the correlation plot to see what we might want to remove from the dataframe. If two variables are highly correlated, then we don't need both of them for training our system.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # Find correlations in the data 
+install.packages("psych")
+library(psych)
 stat_correlations <- cor(twitter_data[,-11])
-stat_correlations
+corPlot(twitter_data[,-11], cex = 0.5)
 twitter_data <- subset(twitter_data, select = -listed_count)
 ```
 
-The variables listed_count and followers_count have a correlation coefficient of 0.810702064. The rest of the pairs of variables have correlation coefficients below 0.5, so we will remove one of the two from that highly correlated pair, listed_count (though we could have removed followers_count instead). 
+The variables listed_count and followers_count have a correlation coefficient of 0.81. The rest of the pairs of variables have correlation coefficients below 0.5, so we will remove one of the two from that highly correlated pair, listed_count (though we could have removed followers_count instead). 
 
-# Training the Model
-## Splitting into Training and Testing Sets
+# KNN
+## Train Model
+### Splitting into Training and Testing Sets
 Then, we split into train and test sets so that 80% of our data would be used for training and 20% for testing. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 set.seed(1982)
@@ -103,7 +108,7 @@ nrow(bot_data_test)
 
 We confirm here that our train set has 80% of our data. We see that bot_data_train (our training set) has 2238 elements while bot_data_test (our testing set) has 559 elements. This aligns with our goal for separating our data points with 80-20% train-test.
 
-## Elbow Plot to find Best K Value for KNN
+### Elbow Plot to Find Best K Value
 Now, we create an elbow plot to check which k value would maximize the accuracy of our knn model.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # Figure out which K to use
@@ -139,7 +144,7 @@ ggplot(knn_diff_k_bot,
 
 We see that 11 is our best k value for training our model because it gives us a model with the highest accuracy. 
 
-## Run KNN with Best K Value (K = 11)
+### Run KNN with Best K Value (K = 11)
 Now, we run KNN analysis with 11 nearest neighbors and analyze the accuracy of the model
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 bot_11NN <-  knn(train = bot_data_train[, -10],
@@ -163,8 +168,8 @@ library(Rcpp)
 ```
 
 
-# Evaluate Model {.tabset}
-## Confusion Matrix
+## Evaluate Model {.tabset}
+### Confusion Matrix
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 conf_matrix <- confusionMatrix(as.factor(bot_11NN), as.factor(bot_data_test$bot), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
 conf_matrix 
@@ -182,7 +187,7 @@ The specificity (or proportion of true negatives) is 0.8746, which means that th
 The F1 is 0.86. This indicates a decently strong accuracy with our system. 
 We also see in this confusion matrix that there are 35 cases of false positives (or 12.5% of non-bots are mislabeled) and 42 cases of false negatives (or 15% of bots are mislabeled). We have a  well-balanced dataset, with 279 cases of non-bots and 280 cases of bots, too.
 
-## Log Loss
+### Log Loss
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # install.packages("MLmetrics")
 library(MLmetrics)
@@ -200,7 +205,7 @@ LogLoss(test, as.numeric(bot_data_test$bot))
 
 We have a LogLoss score of 2.78 for this model. LogLoss is a measurement of how close the prediction probability is to the actual value. As such, this score will penalize very confident incorrect guesses by the system. This score is higher than we'd like for our model, so this means that our model is confidently making some false predictions. This is something we will keep in mind!
 
-## AUC
+### AUC
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 # install.packages("ROCR")
 library(ROCR)
@@ -215,22 +220,29 @@ perf_AUC@y.values[[1]]
 
 As you can see from this graph, our AUC is pretty good! There is significant area between our curve (the multicolored one) and the y = x line that represents random guessing. The AUC value is 0.93, which tells us that our model is pretty good at distinguishing between our two classes (whether or not an account is a bot).
 
-# Adjusting Threshold for Misclassification Errors
-We have slightly more false negatives than false positives. That being said, we feel that the priority for this system is to detect when an account is actually a bot account. Assuming that this system is used to flag/remove Twitter accounts that are bots, if we mislabel an account as a non-bot, then we may delete the account when it holds meaning for its human owner. So, we want to minimize false positives. This means that we should increase the threshold.
+## Adjusting Threshold for Misclassification Errors
+We have slightly more false negatives than false positives. That being said, we feel that the priority for this system is to detect when an account is actually a bot account. Assuming that this system is used to flag/remove Twitter accounts that are bots, if we mislabel an account as a bot, then we may delete the account when it holds meaning for its human owner. So, we want to minimize false positives and thus maximize specificity. This means that we should increase the threshold.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 adjust_thres <- function(x, y, z) {
   #x=pred_probablities, y=threshold, z=test_outcome
   thres <- as.factor(ifelse(x > y, 1,0))
   confusionMatrix(thres, z, positive = "1", dnn=c("Prediction", "Actual"), mode = "everything")
 }
+
 bot_refactor <- as.data.frame(bot_11NN)
 probs <- attributes(bot_11NN)$prob
 bot_refactor <- cbind(bot_refactor, probs)
 bot_refactor_1 <- mutate(bot_refactor, `1` = ifelse(bot_11NN == "1", probs, (1-probs)))
 bot_refactor_1 <- mutate(bot_refactor_1, `0` = ifelse(bot_11NN == "0", probs, (1-probs)))
 
-# thresholds <- lapply(0.2:0.5:0.05, as.factor, x=bot_refactor_1$`1`, z=as.factor(bot_data_test$bot))
+thres <- list(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+thresholds <- lapply(thres, adjust_thres, x=bot_refactor_1$`1`, z=as.factor(bot_data_test$bot))
+sensitivities <- list(thresholds[[1]]$byClass["Specificity"], thresholds[[2]]$byClass["Specificity"], thresholds[[3]]$byClass["Specificity"], thresholds[[4]]$byClass["Specificity"], thresholds[[5]]$byClass["Specificity"], thresholds[[6]]$byClass["Specificity"], thresholds[[7]]$byClass["Specificity"], thresholds[[8]]$byClass["Specificity"], thresholds[[9]]$byClass["Specificity"])
+
+best_spec <- max(unlist(sensitivities))
+best_spec_thres <- unlist(thres[which.max(sensitivities)])
 # adjust_thres(bot_refactor_1$`1`, 0.9, as.factor(bot_data_test$bot))
+
 ```
 * When we adjust the threshold to 0.6, we have an accuracy of 0.8479, a kappa of 0.6959, a sensitivity of 0.7964, and a specificity of 0.8996. We have 28 cases of false positives.
 
@@ -240,12 +252,15 @@ bot_refactor_1 <- mutate(bot_refactor_1, `0` = ifelse(bot_11NN == "0", probs, (1
 
 * When we adjust the threshold to 0.9, we have an accuracy of 0.7746, a kappa of 0.5495, a sensitivity of 0.5857, and a specificity of 0.9642 We have 10 cases of false positives. 
 
+So, if we were fully committed to reducing the amount of times that we remove a non-bot account with our system, our threshold would be 0.9. That being said, this threshold is detrimental to our kappa and sensitivity. As a compromise, we would perhaps be comfortable with 0.7 as a threshold.
+
 # Random Forest
 Next, we will run a random forest model on our Twitter bot data. The random forest algorithm uses several different decision trees that evaluates different subsets of variables on different subsets of data. The algorithm helps solve the over-fitting problem that can result from using a single decision tree. After optimizing the random forest model, we will compare our results with the results of the kNN analysis. 
 
+## Train Model
 We will use the same train and test datasets that we used for the kNN analysis (80/20 train/test split). Next, we will determine the mytry value for the model. The general rule is to start with a mytry value equal to the square root of the number of predictors. In our case, this is 3. Then, we will build an initial random forest on the training data with 1,000 trees. 
 ```{r, message=FALSE, include = FALSE, warning=FALSE}
-
+library(randomForest)
 mytry_tune <- function(x){
   xx <- dim(x)[2]-1
   sqrt(xx)
@@ -274,8 +289,8 @@ table(twitter_data$bot)
 
 ```
 
-# Evaluate Model {.tabset}
-## Confusion Matrix
+## Evaluate Model {.tabset}
+### Confusion Matrix
 We can look at the confusion matrix to assess the accuracy of our model. Based on the confusion matrix, we calculate the accuracy of our model: 88.24%! The accuracy is very good, but we should look at other metrics get a holistic view of the random forest.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -289,7 +304,7 @@ bot_rf_acc #.88 (pretty good)
 
 ```
 
-## Variable Importance
+### Variable Importance
 We can use the importance function to returns the importance of each predictor variable to the accuracy of the classification. Based on our results, we observe that friends_count is the most important variable. This makes sense; we would expect that bot accounts would have less friends than real accounts run by humans. Other important variables include followers_count and favorites_count.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -310,7 +325,7 @@ as.data.frame(bot_rf$importance) #all the metrics together,not scaled
 
 ```
 
-## Error Rates
+### Error Rates
 Next, we will calculate the error rate for each individual tree. We will use these 1,000 error rates to visualize the overall performance of the random forest. The figure below visualizes how the error rte changes as we add more trees. The x-axis is the number of trees and the y-axis is the error rate. We include four different error rates in the plot: the error rate for bots, not bots, OOB and the difference between error rates. The OOB (out of bag) error rate measures the prediction error of the random forest. We would like to minimize the error for all four, however, we should be cautious when minimizing the difference between error rates because a small difference does not equal small error rates. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -341,7 +356,7 @@ fig
 
 ```
 
-# Optimized Random Forest Model
+## Optimized Model
 Now that we have a base random forest, we can tune the parameters to create an optimized model. In this situation, Twitter wants to correctly identify as many bots as possible so they can remove the accounts. Therefore, we would like to see the model correctly identify more bots (the positive class). However, Twitter does not want to incorrectly identify a real account as a bot and delete a human's account, so we will focus on minimizing the false positive rate.
 
 We would like to use the number of trees that would minimize both the bot error and OOB error. Looking at the error rates, we will build another random forest with 205 trees using the same mytry value and training data. 
@@ -376,7 +391,7 @@ op_bot_rf
 
 ```
 
-# Comparing the 2 Random Forest Models
+## Comparing the 2 Random Forest Models
 We have the confusion matrices for the first and second random forest, respectively. The optimized model predicts 5 fewer human accounts as bots but also 5 more bot accounts were not identified. Since we want to focus on minimizing the false positive rate, we must accept the trade-off.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -385,7 +400,7 @@ op_bot_rf$confusion
 
 ```
 
-# Optimized Model Prediction
+## Optimized Model Predictions
 We will use the new model for prediction on the test data and evaluate the model's performance. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -397,8 +412,8 @@ bot_predict = predict(op_bot_rf,
 
 ```
 
-# Evaluate Model {.tabset}
-## Confusion Matrix
+## Evaluate Optimized Model {.tabset}
+### Confusion Matrix
 Based on the confusion matrix below, our model does a good job at prediction. The accuracy is 88.55% and the Kappa value is 0.771. The Sensitivity and Specificity are 86.79% and 90.32%, respectively. We want higher values for these metrics, so we are happy with these results. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -417,7 +432,7 @@ confusionMatrix(bot_test_pred$Prediction,bot_test_pred$bot,positive = "1",
 
 ```
 
-## Variable Importance
+### Variable Importance
 The top 3 important variables are the same as in the previous random forest: friends_count, followers_count and favorites_count. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -425,7 +440,7 @@ as.data.frame(op_bot_rf$importance)
 
 ```
 
-## Error Rate
+### Error Rate
 The error rate for using the optimized model for prediction is 11.45%. We want to minimize the errors, so we are pleased with the low error rate.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -436,7 +451,7 @@ bot_test_error_rate_rf * 100
 
 ```
 
-## ROC and AUC
+### ROC and AUC
 Finally, we will visualize the performance of our random forest by creating a ROC curve and calculating the area under the curve (AUC). As we can see in the plot below, the ROC curve is close to the 90-degree angle maximum and the AUC is 0.95. This is very good and indicates that our model does a great job at predicting the correct classes.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
@@ -476,23 +491,27 @@ text(x = 0.8,
 
 ```
 
-# Model Comparison
-We performed a kNN analysis and ran a random forest on our data to try to find the best model for identifying Twitter bots. Both models were largely successful when used for prediction. The evaluation metrics for the kNN analysis with k = 11 are:
+# KNN vs Random Forest Comparison
+We performed a kNN analysis and ran a random forest on our data to try to find the best model for identifying Twitter bots. Both models were largely successful when used for prediction. The evaluation metrics for the kNN analysis with k = 11 and threshold of 0.7 are:
 
-* Accuracy: 86.23%
+* Accuracy: 83.36%
 
-* Kappa: .7245
+* Kappa: 0.667
 
-* AUC: 0.93
+* Sensitivity: 74.29%
 
-All three of these metrics indicate the model is doing a good job at prediction. We see very similar results when comparing with the random forest model. The evaluation metrics for the random forest model are:
+* Specificity: 92.47%
+
+All of these metrics indicate the model is doing a good job at prediction. We see very similar results when comparing with the random forest model. The evaluation metrics for the random forest model are:
 
 * Accuracy: 88.55%
 
-* Kappa: .771
+* Kappa: 0.771
 
-* AUC: 0.95
+* Sensitivity: 89.2%
 
-These values are slightly better than the kNN model, however both models are successful. The biggest difference between the two models is the difference in the false positive rate; when using the two models for prediction, the kNN model incorrectly identified 15 more human accounts as bots than the random forest model. However, when adjusting the threshold higher in the kNN model, we can bring down the number of false positives to only 10. Overall, we are satisfied with the results from both the kNN and random forest models.
+* Specificity: 87.5%
+
+Both models are comparable, but the tree-based model finds a more balanced optimization of metrics whereas the KNN model increases specificity the most at the expense of other metrics.
 
 # Conclusion
