@@ -1,5 +1,5 @@
 ---
-title: "Final Project -- KNN Analysis"
+title: "Predicting Twitter Bots: kNN and Random Forest"
 author: "Belen Gomez Grimaldi, Amanda Rein, Kay Mattern"
 date: "4/20/2021"
 output:
@@ -338,12 +338,13 @@ fig <- fig %>% add_trace(y=bot_rf_error$`Not bot`, name="Not bot")
 fig <- fig %>% add_trace(y=bot_rf_error$Bot, name="Bot")
 
 fig
+
 ```
 
 # Optimized Random Forest Model
-Now that we have a base random forest, we can tune the parameters to create an optimized model. In this situation, Twitter wants to correctly identify as many bots as possible so they can remove the accounts. Therefore, we want to focus on correctly identifying bots (the positive class). However, Twitter does not want to incorrectly identify a real account as a bot and delete a human's account, so we would like to see the false positive rate decrease as well. 
+Now that we have a base random forest, we can tune the parameters to create an optimized model. In this situation, Twitter wants to correctly identify as many bots as possible so they can remove the accounts. Therefore, we would like to see the model correctly identify more bots (the positive class). However, Twitter does not want to incorrectly identify a real account as a bot and delete a human's account, so we will focus on minimizing the false positive rate.
 
-We would like to use the number of trees that would minimize both the bot error and OOB error. Looking at the error rates, we will build another random forest with 20 trees using the same mytry value and training data. 
+We would like to use the number of trees that would minimize both the bot error and OOB error. Looking at the error rates, we will build another random forest with 205 trees using the same mytry value and training data. 
 ```{r, message=FALSE, include = FALSE, warning=FALSE}
 
 # Depends what metric we want to optimize... we can decide later but for this one I'll focus on correctly identifying bots (positive class)
@@ -354,7 +355,7 @@ We would like to use the number of trees that would minimize both the bot error 
 set.seed(1900)
 op_bot_rf = randomForest(as.factor(bot)~.,
                             bot_data_train,
-                            ntree = 20,
+                            ntree = 205,
                             mtry = bot_mytry,
                             replace = TRUE,
                             sampsize = 100,
@@ -376,7 +377,7 @@ op_bot_rf
 ```
 
 # Comparing the 2 Random Forest Models
-We have the confusion matrices for the first and second random forest, respectively. The optimized model does a better job at predicting bots, but the false positive rate also increased. About 30 more bots were correctly identified but about 30 more humans were mistaken as bots. Since we want to focus on identifying bots, we must accept the trade-off.
+We have the confusion matrices for the first and second random forest, respectively. The optimized model predicts 5 fewer human accounts as bots but also 5 more bot accounts were not identified. Since we want to focus on minimizing the false positive rate, we must accept the trade-off.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
 bot_rf$confusion
@@ -398,7 +399,7 @@ bot_predict = predict(op_bot_rf,
 
 # Evaluate Model {.tabset}
 ## Confusion Matrix
-Based on the confusion matrix below, our model does a good job at prediction. The accuracy is 87.66% and the Kappa value is 0.7531. The Sensitivity and Specificity are 88.21% and 87.1%, respectively. We want higher values for these metrics, so we are happy with these results. 
+Based on the confusion matrix below, our model does a good job at prediction. The accuracy is 88.55% and the Kappa value is 0.771. The Sensitivity and Specificity are 86.79% and 90.32%, respectively. We want higher values for these metrics, so we are happy with these results. 
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
 bot_test_pred = data.frame(bot_data_test, 
@@ -425,7 +426,7 @@ as.data.frame(op_bot_rf$importance)
 ```
 
 ## Error Rate
-The error rate for using the optimized model for prediction is 12.34%. We want to minimizde the errors, so we are pleased with the low error rate.
+The error rate for using the optimized model for prediction is 11.45%. We want to minimize the errors, so we are pleased with the low error rate.
 ```{r, message=FALSE, echo = FALSE, warning=FALSE}
 
 bot_test_error_rate_rf = sum(bot_test_matrix_rf[row(bot_test_matrix_rf) != 
@@ -475,3 +476,23 @@ text(x = 0.8,
 
 ```
 
+# Model Comparison
+We performed a kNN analysis and ran a random forest on our data to try to find the best model for identifying Twitter bots. Both models were largely successful when used for prediction. The evaluation metrics for the kNN analysis with k = 11 are:
+
+* Accuracy: 86.23%
+
+* Kappa: .7245
+
+* AUC: 0.93
+
+All three of these metrics indicate the model is doing a good job at prediction. We see very similar results when comparing with the random forest model. The evaluation metrics for the random forest model are:
+
+* Accuracy: 88.55%
+
+* Kappa: .771
+
+* AUC: 0.95
+
+These values are slightly better than the kNN model, however both models are successful. The biggest difference between the two models is the difference in the false positive rate; when using the two models for prediction, the kNN model incorrectly identified 15 more human accounts as bots than the random forest model. However, when adjusting the threshold higher in the kNN model, we can bring down the number of false positives to only 10. Overall, we are satisfied with the results from both the kNN and random forest models.
+
+# Conclusion
